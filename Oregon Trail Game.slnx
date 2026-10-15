@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Oregon Trail Game.vcxproj" Id="51e2e550-adaf-4eb5-89b5-7b4feb363f84" />
+</Solution>
