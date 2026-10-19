@@ -60,6 +60,34 @@
 #undef min
 //simplifying every line (don't need to clarify std every time)
 using namespace std;
+
+
+
+// Stores all the information belonging to one party member
+class PartyMember {
+public:
+	// Information about this person
+	string name;
+	bool alive;
+	bool sick;
+	int severity;
+	string sicknessDesc;
+
+	// Special illness timers
+	int dysenteryDays;
+	int dysenteryTreatmentDays;
+
+	// Constructor: sets up a new party member
+	PartyMember(string memberName) {
+		name = memberName;
+		alive = true;
+		sick = false;
+		severity = 0;
+		sicknessDesc = "";
+		dysenteryDays = 0;
+		dysenteryTreatmentDays = 0;
+	}
+};
 // Internal inventory to track purchased items (not shown to the player)
 struct Inventory {
 	int foodPounds = 0;
@@ -108,7 +136,8 @@ struct NPC {
 	string name;
 	string role; // "Trader", "Healer", "Storyteller"
 };
-void meetLocals(Inventory &inv, vector<string> &party, vector<bool> &alive, vector<int> &severity, std::mt19937 &rng, int &startingGold) {
+void meetLocals(Inventory& inv, vector<PartyMember>& party,
+	std::mt19937& rng, int& startingGold) {
 	vector<string> names = {"Martha","Elias","Jonah","Agnes","Samuel","Lydia","Hank","Beatrice","Clara","Walter"};
 	shuffle(names.begin(), names.end(), rng);
 	int npcCount = 3;
@@ -152,22 +181,22 @@ void meetLocals(Inventory &inv, vector<string> &party, vector<bool> &alive, vect
 		}
 	} else if (npc.role == "Healer") {
 		// Healer can treat a sick member for a fee
-		bool anySick = false; for (size_t i = 0; i < party.size(); ++i) if (alive[i] && severity[i] > 0) anySick = true;
+		bool anySick = false; for (size_t i = 0; i < party.size(); ++i) if (party[i].alive && party[i].severity > 0) anySick = true;
 		if (!anySick) { cout << npc.name << ": Nobody looks sick. I have nothing to do." << endl; return; }
 		cout << npc.name << ": I can tend to one sick person and reduce severity by 1 for 15 gold. Treat someone? (y/n): "; string a; getline(cin,a);
 		if (a.empty() || (a!="y" && a!="Y")) { cout << "You decline treatment." << endl; return; }
-		cout << "Select who to treat:" << endl; for (size_t i = 0; i < party.size(); ++i) { cout << i+1 << ") " << party[i]; if (!alive[i]) cout << " (dead)"; else if (severity[i]>0) cout << " (sick sev "<<severity[i]<<")"; cout << endl; }
+		cout << "Select who to treat:" << endl; for (size_t i = 0; i < party.size(); ++i) { cout << i+1 << ") " << party[i].name; if (!party[i].alive) cout << " (dead)"; else if (party[i].severity>0) cout << " (sick sev "<<party[i].severity<<")"; cout << endl; }
 		string sel; getline(cin, sel); int who=-1; try{ who = stoi(sel)-1; } catch(...) { who=-1; }
-		if (who<0 || who >= (int)party.size() || !alive[who] || severity[who]==0) { cout << "Invalid selection or no treatment needed." << endl; return; }
+		if (who<0 || who >= (int)party.size() || !party[who].alive || party[who].severity==0) { cout << "Invalid selection or no treatment needed." << endl; return; }
 		if (startingGold < 15) { cout << "You can't afford the healer." << endl; return; }
-		startingGold -= 15; severity[who] = max(0, severity[who]-1); if (severity[who]==0) { cout << party[who] << " has been healed and is now healthy." << endl; } else cout << party[who] << " has been treated; severity now "<<severity[who]<<"."<<endl;
+		startingGold -= 15; party[who].severity = max(0, party[who].severity-1); if (party[who].severity==0) { cout << party[who].name << " has been healed and is now healthy." << endl; } else cout << party[who].name << " has been treated; severity now "<<party[who].severity<<"."<<endl;
 	} else { // Storyteller
 		vector<string> rumors = {"There's a shortcut through the north pass.", "A cholera outbreak was reported ahead.", "Good hunting grounds in the next 80 miles.", "A wealthy trader visits every 200 miles."};
 		cout << npc.name << ": \"" << rumors[rng() % rumors.size()] << "\"" << endl;
 	}
 }
 // Render a simple ASCII scene showing party, oxen, and wagon
-void renderScene(const Inventory &inv, const vector<string> &party, const vector<bool> &alive, const vector<int> &severity, bool wagonBroken) {
+void renderScene(const Inventory &inv, const vector<PartyMember> &party, bool wagonBroken) {
 	// Try to use ANSI colors (green healthy, yellow sick, red dead)
 	const string RESET = "\x1b[0m";
 	const string RED = "\x1b[31m";
@@ -189,7 +218,7 @@ void renderScene(const Inventory &inv, const vector<string> &party, const vector
 	for (size_t r = 0; r < 3; ++r) {
 		for (size_t i = 0; i < party.size(); ++i) {
 			string s;
-			if (!alive[i]) {
+			if (!party[i].alive) {
 				if (r == 0) s = "  X  ";
 				else if (r == 1) s = " /|\\ ";
 				else s = " / \\ ";
@@ -199,7 +228,7 @@ void renderScene(const Inventory &inv, const vector<string> &party, const vector
 				else if (r == 1) s = " /|\\ ";
 				else s = " / \\ ";
 				// color by health
-				if (severity[i] > 0) printPadded(s, colWidth, YELLOW);
+				if (party[i].severity > 0) printPadded(s, colWidth, YELLOW);
 				else printPadded(s, colWidth, GREEN);
 			}
 		}
@@ -207,11 +236,11 @@ void renderScene(const Inventory &inv, const vector<string> &party, const vector
 	}
 	// Names and status under figures
 	for (size_t i = 0; i < party.size(); ++i) {
-		string name = party[i].substr(0, min<size_t>(party[i].size(), 14));
+		string name = party[i].name.substr(0, min<size_t>(party[i].name.size(), 14));
 		string status = "";
 		string color = GREEN;
-		if (!alive[i]) { status = " (dead)"; color = RED; }
-		else if (severity[i] > 0) { status = " (sick)"; color = YELLOW; }
+		if (!party[i].alive) { status = " (dead)"; color = RED; }
+		else if (party[i].severity > 0) { status = " (sick)"; color = YELLOW; }
 		string label = name + status;
 		printPadded(label, colWidth, color);
 	}
@@ -666,8 +695,14 @@ int main() {
 	} else {
 		huntSuccessProb = 0.50; huntYieldMin = 20; huntYieldMax = 150;
 	}
-	// Party data structures for medical events
-	vector<string> party = { playerNameOne, playerNameTwo, playerNameThree, playerNameFour, playerNameFive };
+	// Create the party using PartyMember objects
+	vector<PartyMember> party = {
+		PartyMember(playerNameOne),
+		PartyMember(playerNameTwo),
+		PartyMember(playerNameThree),
+		PartyMember(playerNameFour),
+		PartyMember(playerNameFive)
+	};
 	vector<bool> sick(party.size(), false);
 	vector<string> sicknessDesc(party.size(), "");
 	vector<bool> alive(party.size(), true);
@@ -718,12 +753,6 @@ int main() {
 		getline(cin, delayLine);
 		try { autoDelayMs = stoi(delayLine); } catch(...) { autoDelayMs = 200; }
 	}
-	// Health severity: 0 = healthy, 1 = mild, 2 = moderate, 3 = severe
-	vector<int> severity(party.size(), 0);
-	// Track dysentery countdown (days until death) per member; 0 = not infected
-	vector<int> dysenteryDays(party.size(), 0);
-	// Track dysentery treatment progress (days remaining of treatment) per member; 0 = not in treatment
-	vector<int> dysenteryTreatmentDays(party.size(), 0);
 	// Track auto mode days run so far
 	int autoDaysRunNow = 0;
 	// Main simulation loop
@@ -742,7 +771,7 @@ int main() {
 				if (cmd == "q" || cmd == "Q") { cout << "Stopping trail simulation." << endl; break; }
 				if (cmd == "s" || cmd == "S") {
 					displayInventory(inv, startingGold);
-					for (size_t i = 0; i < party.size(); ++i) if (!alive[i]) cout << party[i] << " (dead)\n";
+					for (size_t i = 0; i < party.size(); ++i) if (!party[i].alive) cout << party[i].name << " (dead)\n";
 					continue;
 				}
 				// Handle rest command: reduces severity for sick members
@@ -751,9 +780,9 @@ int main() {
 					cout << "You rest for a day. Sick members may recover faster." << endl;
 					// Apply recovery chance to each sick and alive party member
 					for (size_t i = 0; i < party.size(); ++i) {
-						if (severity[i] > 0 && alive[i]) {
+						if (party[i].severity > 0 && party[i].alive) {
 							int roll = rng() % 100;
-							if (roll < 70) { severity[i] = max(0, severity[i] - 1); if (severity[i] == 0) sick[i] = false; }
+							if (roll < 70) { party[i].severity = max(0, party[i].severity - 1); if (party[i].severity == 0) party[i].sick = false; }
 						}
 					}
 					// Advance one day after resting
@@ -763,9 +792,9 @@ int main() {
 				cout << "Select a party member to treat:\n";
 				// List party members with their health status
 				for (size_t i = 0; i < party.size(); ++i) {
-					cout << i+1 << ". " << party[i];
-					if (!alive[i]) cout << " (dead)";
-					else if (severity[i] > 0) cout << " (sick: " << sicknessDesc[i] << ", severity " << severity[i] << ")";
+					cout << i+1 << ". " << party[i].name;
+					if (!party[i].alive) cout << " (dead)";
+					else if (party[i].severity > 0) cout << " (sick: " << party[i].sicknessDesc << ", severity " << party[i].severity << ")";
 					cout << "\n";
 				}
 				cout << "Enter number: ";
@@ -775,16 +804,16 @@ int main() {
 				try { idx = stoi(idxLine) - 1; } catch(...) { idx = -1; }
 			// Validate index and apply treatment logic
 			if (idx >= 0 && idx < (int)party.size()) {
-				if (!alive[idx]) cout << party[idx] << " is dead and cannot be treated.\n";
-				else if (severity[idx] == 0) cout << party[idx] << " is not sick.\n";
-				else if (sicknessDesc[idx] == "dysentery") {
+				if (!party[idx].alive) cout << party[idx].name << " is dead and cannot be treated.\n";
+				else if (party[idx].severity == 0) cout << party[idx].name << " is not sick.\n";
+				else if (party[idx].sicknessDesc == "dysentery") {
 					cout << "Medicine kits and field treatment cannot cure dysentery. Only a medical station can cure it (3 days required)." << endl;
 				} else if (inv.medicineKits <= 0) cout << "You have no medicine kits to use.\n";
 				else {
 					inv.medicineKits -= 1;
-					severity[idx] = max(0, severity[idx] - 1);
-					if (severity[idx] == 0) { sick[idx] = false; sicknessDesc[idx] = ""; cout << party[idx] << " has been cured by medicine." << endl; renderScene(inv, party, alive, severity, wagonBroken); }
-					else { cout << party[idx] << " has been treated and is now severity " << severity[idx] << "." << endl; renderScene(inv, party, alive, severity, wagonBroken); }
+					party[idx].severity = max(0, party[idx].severity - 1);
+					if (party[idx].severity == 0) { party[idx].sick = false; party[idx].sicknessDesc = ""; cout << party[idx].name << " has been cured by medicine." << endl; renderScene(inv, party, wagonBroken); }
+					else { cout << party[idx].name << " has been treated and is now severity " << party[idx].severity << "." << endl; renderScene(inv, party, wagonBroken); }
 				}
 			} else cout << "Invalid selection.\n";
 				continue;
@@ -820,7 +849,7 @@ int main() {
 		if (travelMode == 2) autoDaysRunNow++;
 		// Daily food consumption based on living party members
 		int livingCount = 0;
-		for (size_t i = 0; i < alive.size(); ++i) if (alive[i]) livingCount++;
+		for (size_t i = 0; i < alive.size(); ++i) if (party[i].alive) livingCount++;
 		int dailyConsumptionPerPerson = 3; // pounds per person per day
 		int dailyConsumption = livingCount * dailyConsumptionPerPerson;
 		if (inv.foodPounds >= dailyConsumption) {
@@ -833,11 +862,11 @@ int main() {
 			}
 			cout << "Food shortage! Party members are at higher risk of illness or worsening conditions." << endl;
 			for (size_t i = 0; i < party.size(); ++i) {
-				if (alive[i]) {
-					int prevSeverity = severity[i];
-					severity[i] = min(3, severity[i] + 1);
-					sick[i] = (severity[i] > 0);
-					consumeClothingForSeverity(inv, prevSeverity, severity[i], party[i]);
+				if (party[i].alive) {
+					int prevSeverity = party[i].severity;
+					party[i].severity = min(3, party[i].severity + 1);
+					party[i].sick = (party[i].severity > 0);
+					consumeClothingForSeverity(inv, prevSeverity, party[i].severity, party[i].name);
 				}
 			}
 		}
@@ -892,8 +921,8 @@ int main() {
 			//Count and list who survived the journey
 			int oregonSurvivorCount = 0;
 			for (size_t i = 0; i < party.size(); ++i) {
-				if (alive[i]) cout << "  - " << party[i] << " (survived)" << endl;
-				else cout << "  - " << party[i] << " (did not survive)" << endl;
+				if (party[i].alive) cout << "  - " << party[i].name << " (survived)" << endl;
+				else cout << "  - " << party[i].name << " (did not survive)" << endl;
 			}
 			stopSim = true;
 			break; // exit main simulation loop so the final summary runs
@@ -940,7 +969,7 @@ int main() {
 			getline(cin, sc);
 			// Talk to locals shortcut
 			if (sc == "T" || sc == "t") { 
-				meetLocals(inv, party, alive, severity, rng, startingGold); 
+				meetLocals(inv, party, rng, startingGold); 
 				continue; 
 			}
 			int shopChoice = 0; try { shopChoice = stoi(sc); } catch(...) { shopChoice = -1; }
@@ -950,45 +979,45 @@ int main() {
 						// Advance a single day while at the medical station
 						daysOnTrail++;
 						// consume food for the day
-						int livingCountLocal = 0; for (size_t ii=0; ii<alive.size(); ++ii) if (alive[ii]) livingCountLocal++;
+						int livingCountLocal = 0; for (size_t ii=0; ii<alive.size(); ++ii) if (party[ii].alive) livingCountLocal++;
 						int dailyConsumptionLocal = livingCountLocal * 3;
 						if (inv.foodPounds >= dailyConsumptionLocal) inv.foodPounds -= dailyConsumptionLocal;
 						else { if (inv.foodPounds>0) { cout<<"You used remaining "<<inv.foodPounds<<" lbs of food."<<endl; inv.foodPounds=0; } cout<<"Food shortage while at station."<<endl; }
 						// Progress dysentery countdown and any treatments
 						for (size_t ii = 0; ii < party.size(); ++ii) {
-							if (!alive[ii]) continue;
-							if (dysenteryDays[ii] > 0) {
+							if (!party[ii].alive) continue;
+							if (party[ii].dysenteryDays > 0) {
 								// Start treatment the first day this person stays at the station
-								if (dysenteryTreatmentDays[ii] <= 0) {
-									dysenteryTreatmentDays[ii] = 3;
-									cout << party[ii] << " has begun treatment for dysentery. 3 days required." << endl;
+								if (party[ii].dysenteryTreatmentDays <= 0) {
+									party[ii].dysenteryTreatmentDays = 3;
+									cout << party[ii].name << " has begun treatment for dysentery. 3 days required." << endl;
 								}
-								dysenteryDays[ii] -= 1;
-								if (dysenteryTreatmentDays[ii] > 0) {
-									dysenteryTreatmentDays[ii] -= 1;
-									cout << party[ii] << " is receiving treatment. Days remaining: " << dysenteryTreatmentDays[ii] << "." << endl;
-									if (dysenteryTreatmentDays[ii] <= 0) {
+								party[ii].dysenteryDays -= 1;
+								if (party[ii].dysenteryTreatmentDays > 0) {
+									party[ii].dysenteryTreatmentDays -= 1;
+									cout << party[ii].name << " is receiving treatment. Days remaining: " << party[ii].dysenteryTreatmentDays << "." << endl;
+									if (party[ii].dysenteryTreatmentDays <= 0) {
 										// cured
-										dysenteryDays[ii] = 0;
-										severity[ii] = 0; sick[ii] = false; sicknessDesc[ii] = "";
-										cout << party[ii] << " has been cured of dysentery at the medical station." << endl;
+										party[ii].dysenteryDays = 0;
+										party[ii].severity = 0; party[ii].sick = false; party[ii].sicknessDesc = "";
+										cout << party[ii].name << " has been cured of dysentery at the medical station." << endl;
 									}
 								}
 								// check death after treatment progression
-								if (dysenteryDays[ii] <= 0 && dysenteryTreatmentDays[ii] <= 0) {
+								if (party[ii].dysenteryDays <= 0 && party[ii].dysenteryTreatmentDays <= 0) {
 									// died earlier or cured; nothing
-								} else if (dysenteryDays[ii] <= 0 && dysenteryTreatmentDays[ii] <= 0) {
+								} else if (party[ii].dysenteryDays <= 0 && party[ii].dysenteryTreatmentDays <= 0) {
 									// placeholder
-								} else if (dysenteryDays[ii] <= 0) {
-									alive[ii] = false; sick[ii] = false; severity[ii] = 0; sicknessDesc[ii] = "";
-									cout << "Tragic news: " << party[ii] << " has died from dysentery while at the station." << endl;
-									consumeClothingForDeath(inv, party[ii]);
+								} else if (party[ii].dysenteryDays <= 0) {
+									party[ii].alive = false; party[ii].sick = false; party[ii].severity = 0; party[ii].sicknessDesc = "";
+									cout << "Tragic news: " << party[ii].name << " has died from dysentery while at the station." << endl;
+									consumeClothingForDeath(inv, party[ii].name);
 								}
 							}
 						}
 						// show a simple daily station summary
 						displayDayCounter(daysOnTrail);
-						renderScene(inv, party, alive, severity, wagonBroken);
+						renderScene(inv, party, wagonBroken);
 						continue;
 					}
 					// Handle purchases and sales
@@ -1133,7 +1162,7 @@ int main() {
 				int slowdown = (rng() % 2) + 1; // 1 or 2
 				speedMultiplier *= (1.0 - slowdown / 100.0);
 				cout << "A misfortune: one of your oxen has died. Remaining oxen: " << inv.oxen << ". Travel speed reduced by " << slowdown << "%." << endl;
-				renderScene(inv, party, alive, severity, wagonBroken);
+				renderScene(inv, party, wagonBroken);
 				// If you have at least 2 oxen left, wagons still pull; otherwise heavy slowdown
 				if (inv.oxen < 2) {
 					speedMultiplier *= 0.6; // big penalty when fewer than 2 oxen
@@ -1157,18 +1186,18 @@ int main() {
 						inv.spareParts -= 1;
 						cout << "You used a spare part to repair the wagon." << endl;
 						// Wagon repaired, no speed penalty
-						renderScene(inv, party, alive, severity, wagonBroken);
+						renderScene(inv, party, wagonBroken);
 						} else {
 						wagonBroken = true;
 						speedMultiplier *= 0.5;
 						cout << "You chose not to repair now. Travel speed halved until repaired." << endl;
-						renderScene(inv, party, alive, severity, wagonBroken);
+						renderScene(inv, party, wagonBroken);
 						}
 					} else {
 						// auto mode: auto-repair if parts available
 						inv.spareParts -= 1;
 						cout << "Wagon broke but a spare part was used automatically to repair it." << endl;
-						renderScene(inv, party, alive, severity, wagonBroken);
+						renderScene(inv, party, wagonBroken);
 					}
 				} else {
 					wagonBroken = true;
@@ -1179,7 +1208,7 @@ int main() {
 		}
 		// daily summary
 		displayDayCounter(daysOnTrail);
-		renderScene(inv, party, alive, severity, wagonBroken);
+		renderScene(inv, party, wagonBroken);
 		// Update month based on days
 		if (daysOnTrail % 30 == 0) {
 			currentMonth++;
@@ -1187,42 +1216,42 @@ int main() {
 		}
 		// Daily health updates: sick members may worsen or improve
 		for (size_t i = 0; i < party.size(); ++i) {
-			if (!alive[i]) continue;
-			if (severity[i] > 0) {
+			if (!party[i].alive) continue;
+			if (party[i].severity > 0) {
 				int roll = rng() % 100;
 				// chance to worsen depends on current severity (made more likely)
-				int worsenChance = 8 * severity[i]; // 8%,16%,24%
+				int worsenChance = 8 * party[i].severity; // 8%,16%,24%
 				int recoverChance = 8; // base ~8% daily recovery
-				int prevSeverityForDay = severity[i];
+				int prevSeverityForDay = party[i].severity;
 				if (roll < worsenChance) {
-					severity[i] = min(3, severity[i] + 1);
-					cout << party[i] << "'s condition has worsened to severity " << severity[i] << "." << endl;
-					consumeClothingForSeverity(inv, prevSeverityForDay, severity[i], party[i]);
+					party[i].severity = min(3, party[i].severity + 1);
+					cout << party[i].name << "'s condition has worsened to severity " << party[i].severity << "." << endl;
+					consumeClothingForSeverity(inv, prevSeverityForDay, party[i].severity, party[i].name);
 				}
 				else if (roll < worsenChance + recoverChance) {
-					severity[i] = max(0, severity[i] - 1);
-					if (severity[i] == 0) { sick[i] = false; sicknessDesc[i] = ""; cout << party[i] << " has recovered." << endl; }
-					else cout << party[i] << " has improved to severity " << severity[i] << "." << endl;
+					party[i].severity = max(0, party[i].severity - 1);
+					if (party[i].severity == 0) { party[i].sick = false; party[i].sicknessDesc = ""; cout << party[i].name << " has recovered." << endl; }
+					else cout << party[i].name << " has improved to severity " << party[i].severity << "." << endl;
 				}
 				// if severe, chance of death
-				if (severity[i] >= 3) {
+				if (party[i].severity >= 3) {
 					int deathRoll = rng() % 100;
 					if (deathRoll < 15) { // 15% daily death chance at severity 3
-						alive[i] = false; sick[i] = false; severity[i] = 0;
-						cout << "Tragic news: " << party[i] << " has died from their illness." << endl;
-						consumeClothingForDeath(inv, party[i]);
-						renderScene(inv, party, alive, severity, wagonBroken);
+						party[i].alive = false; party[i].sick = false; party[i].severity = 0;
+						cout << "Tragic news: " << party[i].name << " has died from their illness." << endl;
+						consumeClothingForDeath(inv, party[i].name);
+						renderScene(inv, party, wagonBroken);
 					}
 				}
 				// dysentery countdown handling
-				if (dysenteryDays[i] > 0) {
-					dysenteryDays[i] -= 1;
-					if (dysenteryDays[i] <= 0) {
+				if (party[i].dysenteryDays > 0) {
+					party[i].dysenteryDays -= 1;
+					if (party[i].dysenteryDays <= 0) {
 						// person dies from dysentery if countdown hits zero
-						alive[i] = false; sick[i] = false; severity[i] = 0; sicknessDesc[i] = "";
-						cout << "Tragic news: " << party[i] << " has died from dysentery." << endl;
-						consumeClothingForDeath(inv, party[i]);
-						renderScene(inv, party, alive, severity, wagonBroken);
+						party[i].alive = false; party[i].sick = false; party[i].severity = 0; party[i].sicknessDesc = "";
+						cout << "Tragic news: " << party[i].name << " has died from dysentery." << endl;
+						consumeClothingForDeath(inv, party[i].name);
+						renderScene(inv, party, wagonBroken);
 					}
 				}
 			}
@@ -1237,30 +1266,30 @@ int main() {
 			int idxLocal = -1;
 			while (attemptsLocal < 10) {
 				int candidate = memberDist(rng);
-				if (alive[candidate]) { idxLocal = candidate; break; }
+				if (party[candidate].alive) { idxLocal = candidate; break; }
 				attemptsLocal++;
 			}
 			if (idxLocal != -1) {
 				int ill = illnessDist(rng);
-				int prevSeverityLocal = severity[idxLocal];
-				if (severity[idxLocal] == 0) severity[idxLocal] = 1; else severity[idxLocal] = min(3, severity[idxLocal] + 1);
-				sick[idxLocal] = (severity[idxLocal] > 0);
-				sicknessDesc[idxLocal] = illnesses[ill];
-				cout << "Daily event: " << party[idxLocal] << " has fallen ill with " << sicknessDesc[idxLocal] << " (severity " << severity[idxLocal] << ")!" << endl;
-				consumeClothingForSeverity(inv, prevSeverityLocal, severity[idxLocal], party[idxLocal]);
-				renderScene(inv, party, alive, severity, wagonBroken);
-				if (sicknessDesc[idxLocal] == "dysentery") {
-					dysenteryDays[idxLocal] = 10;
-					cout << "Warning: " << party[idxLocal] << " has contracted dysentery. Without treatment they will die in 10 days." << endl;
+				int prevSeverityLocal = party[idxLocal].severity;
+				if (party[idxLocal].severity == 0) party[idxLocal].severity = 1; else party[idxLocal].severity = min(3, party[idxLocal].severity + 1);
+				party[idxLocal].sick = (party[idxLocal].severity > 0);
+				party[idxLocal].sicknessDesc = illnesses[ill];
+				cout << "Daily event: " << party[idxLocal].name << " has fallen ill with " << party[idxLocal].sicknessDesc << " (severity " << party[idxLocal].severity << ")!" << endl;
+				consumeClothingForSeverity(inv, prevSeverityLocal, party[idxLocal].severity, party[idxLocal].name);
+				renderScene(inv, party, wagonBroken);
+				if (party[idxLocal].sicknessDesc == "dysentery") {
+					party[idxLocal].dysenteryDays = 10;
+					cout << "Warning: " << party[idxLocal].name << " has contracted dysentery. Without treatment they will die in 10 days." << endl;
 				} else {
 					// Auto-apply medicine for non-dysentery illnesses
-					if (inv.medicineKits > 0 && severity[idxLocal] > 0) {
+					if (inv.medicineKits > 0 && party[idxLocal].severity > 0) {
 						inv.medicineKits -= 1;
-						severity[idxLocal] = max(0, severity[idxLocal] - 1);
-						if (severity[idxLocal] == 0) {
-							sick[idxLocal] = false; sicknessDesc[idxLocal] = ""; cout << party[idxLocal] << " was automatically treated with a medicine kit and has recovered." << endl;
+						party[idxLocal].severity = max(0, party[idxLocal].severity - 1);
+						if (party[idxLocal].severity == 0) {
+							party[idxLocal].sick = false; party[idxLocal].sicknessDesc = ""; cout << party[idxLocal].name << " was automatically treated with a medicine kit and has recovered." << endl;
 						} else {
-							cout << party[idxLocal] << " was automatically treated with a medicine kit; severity is now " << severity[idxLocal] << "." << endl;
+							cout << party[idxLocal].name << " was automatically treated with a medicine kit; severity is now " << party[idxLocal].severity << "." << endl;
 						}
 					}
 				}
@@ -1275,34 +1304,34 @@ int main() {
 			int idx = -1;
 			while (attempts < 10) {
 				int candidate = memberDist(rng);
-				if (alive[candidate]) { idx = candidate; break; }
+				if (party[candidate].alive) { idx = candidate; break; }
 				attempts++;
 			}
 			if (idx != -1) {
 				int ill = illnessDist(rng);
 				// if already sick increase severity, else start at mild
-				int prevSeverityScheduled = severity[idx];
-				if (severity[idx] == 0) severity[idx] = 1; else severity[idx] = min(3, severity[idx] + 1);
-				sick[idx] = (severity[idx] > 0);
-				sicknessDesc[idx] = illnesses[ill];
+				int prevSeverityScheduled = party[idx].severity;
+				if (party[idx].severity == 0) party[idx].severity = 1; else party[idx].severity = min(3, party[idx].severity + 1);
+				party[idx].sick = (party[idx].severity > 0);
+				party[idx].sicknessDesc = illnesses[ill];
 				// If dysentery is contracted, it is always fatal
-				cout << "Event: " << party[idx] << " has fallen ill with " << sicknessDesc[idx] << " (severity " << severity[idx] << ")!" << endl;
-				consumeClothingForSeverity(inv, prevSeverityScheduled, severity[idx], party[idx]);
-				renderScene(inv, party, alive, severity, wagonBroken);if (sicknessDesc[idx] == "dysentery") {
+				cout << "Event: " << party[idx].name << " has fallen ill with " << party[idx].sicknessDesc << " (severity " << party[idx].severity << ")!" << endl;
+				consumeClothingForSeverity(inv, prevSeverityScheduled, party[idx].severity, party[idx].name);
+				renderScene(inv, party, wagonBroken);if (party[idx].sicknessDesc == "dysentery") {
 					// Dysentery: start a 10-day countdown until death (unless cured in time)
-					dysenteryDays[idx] = 10;
-					cout << "Warning: " << party[idx] << " has contracted dysentery. Without treatment they will die in 10 days." << endl;
+					party[idx].dysenteryDays = 10;
+					cout << "Warning: " << party[idx].name << " has contracted dysentery. Without treatment they will die in 10 days." << endl;
 				} else {
 					// Auto-apply medicine for non-dysentery illnesses
-					if (inv.medicineKits > 0 && severity[idx] > 0) {
+					if (inv.medicineKits > 0 && party[idx].severity > 0) {
 						inv.medicineKits -= 1;
-						severity[idx] = max(0, severity[idx] - 1);
-						if (severity[idx] == 0) {
-							sick[idx] = false;
-							sicknessDesc[idx] = "";
-							cout << party[idx] << " was automatically treated with a medicine kit and has recovered." << endl;
+						party[idx].severity = max(0, party[idx].severity - 1);
+						if (party[idx].severity == 0) {
+							party[idx].sick = false;
+							party[idx].sicknessDesc = "";
+							cout << party[idx].name << " was automatically treated with a medicine kit and has recovered." << endl;
 						} else {
-							cout << party[idx] << " was automatically treated with a medicine kit; severity is now " << severity[idx] << "." << endl;
+							cout << party[idx].name << " was automatically treated with a medicine kit; severity is now " << party[idx].severity << "." << endl;
 						}
 					}
 				}
@@ -1314,7 +1343,7 @@ int main() {
 		{
 			bool anyAlive = false;
 			for (size_t i = 0; i < alive.size(); ++i) {
-				if (alive[i]) { anyAlive = true; break; }
+				if (party[i].alive) { anyAlive = true; break; }
 			}
 			if (!anyAlive) {
 				cout << "All party members have died. The game is over." << endl;
@@ -1334,8 +1363,8 @@ int main() {
 			cout << "Miles remaining to Oregon: " << (milesToOregon - milesTraveled) << endl;
 			// show any sick party members
 			for (size_t i = 0; i < party.size(); ++i) {
-				if (!alive[i]) cout << party[i] << " is dead." << endl;
-				else if (sick[i]) cout << party[i] << " is sick (" << sicknessDesc[i] << ") severity " << severity[i] << endl;
+				if (!party[i].alive) cout << party[i].name << " is dead." << endl;
+				else if (party[i].sick) cout << party[i].name << " is sick (" << party[i].sicknessDesc << ") severity " << party[i].severity << endl;
 			}
 		}
 		// If auto mode, handle sleeping and stop conditions
@@ -1353,7 +1382,7 @@ int main() {
 	cout << "Days on trail: " << daysOnTrail << endl;
 	cout << "Miles traveled: " << milesTraveled << " / " << milesToOregon << endl;
 	int survivors = 0;
-	for (size_t i = 0; i < party.size(); ++i) if (alive[i]) survivors++;
+	for (size_t i = 0; i < party.size(); ++i) if (party[i].alive) survivors++;
 	cout << "Survivors: " << survivors << " / " << party.size() << endl;
 	displayInventory(inv, startingGold);
 	ofstream scoreFile("scores.txt", ios::app);
@@ -1379,4 +1408,4 @@ int main() {
 	}
 	cout << "Thanks for playing." << endl;
 	return 0;
-}
+} 
